@@ -1,0 +1,96 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EC2 Network Interface Manager
+Parameters:
+  LambdaS3Bucket:
+    Type: String
+    Default: ''
+  CFNCustomProviderZipFileName:
+    Type: String
+    Default: lambdas/network-interface-manager-latest.zip
+
+Conditions:
+  UsePublicBucket: !Equals
+    - !Ref 'LambdaS3Bucket'
+    - ''
+
+Resources:
+  Policy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Resource: "*"
+          Action:
+            - ec2:DescribeNetworkInterfaces
+            - ec2:DescribeInstances
+            - ec2:AttachNetworkInterface
+            - ec2:DetachNetworkInterface
+            - tag:GetTagValues
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - !Ref Policy
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+
+  Function:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Network Interface manager for ec2 instances
+      FunctionName: network-interface-manager
+      Code:
+        S3Bucket: !If
+          - UsePublicBucket
+          - !Sub 'binxio-public-${AWS::Region}'
+          - !Ref 'LambdaS3Bucket'
+        S3Key: !Ref 'CFNCustomProviderZipFileName'
+      Handler: network_interface_manager.handler
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.7
+
+
+  Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt Function.Arn
+      Principal: events.amazonaws.com
+
+  Sync:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: network-interface-manager sync
+      ScheduleExpression: rate(5 minutes)
+      State: ENABLED
+      Targets:
+        - Id: network-interface-manager
+          Arn: !GetAtt Function.Arn
+
+  Trigger:
+    Type: AWS::Events::Rule
+    Properties:
+      State: ENABLED
+      EventPattern: |
+        {
+          "source": [
+            "aws.ec2"
+          ],
+          "detail-type": [
+            "EC2 Instance State-change Notification"
+          ]
+        }
+      Targets:
+        - Id: network-interface-manager
+          Arn: !GetAtt Function.Arn

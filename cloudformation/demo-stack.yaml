@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Network Interface Manager demo
+Parameters:
+  VPC:
+    Type: AWS::EC2::VPC::Id
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  Ami:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+Resources:
+
+  NetworkInterface1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Select 
+        - 0
+        - !Ref Subnets
+      Tags:
+        - Key: network-interface-manager-pool
+          Value: bastion
+
+  NetworkInterface2:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Select 
+        - 1
+        - !Ref Subnets
+      Tags:
+        - Key: network-interface-manager-pool
+          Value: bastion
+
+  NetworkInterface3:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Select
+        - 2
+        - !Ref Subnets
+      Tags:
+        - Key: network-interface-manager-pool
+          Value: bastion
+
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Ref AWS::StackName
+      VPCZoneIdentifier: !Ref 'Subnets'
+      LaunchConfigurationName: !Ref 'LaunchConfiguration'
+      MinSize: '1'
+      MaxSize: '3'
+      DesiredCapacity: '3'
+      Tags:
+        - Key: network-interface-manager-pool
+          Value: bastion
+          PropagateAtLaunch: true
+        - Key: Name
+          Value: bastion
+          PropagateAtLaunch: true
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 0
+        MaxBatchSize: 3
+        WaitOnResourceSignals: false
+
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Bastion host
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          Description: ssh from the internet
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          Description: ping from the internet
+          CidrIp: 0.0.0.0/0
+
+
+  LaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !Ref 'Ami'
+      AssociatePublicIpAddress: true
+      InstanceType: t3.micro
+      SecurityGroups:
+        - !Ref BastionSecurityGroup
+
