@@ -61,12 +61,41 @@ class Manager(object):
         """
         return set(self.instances) - self.attached_instances
 
+    def attach_interface(self, instance: NetworkInterface):
+        available_interfaces = get_pool_interfaces_in_subnet(
+            self.pool_name, instance.subnet_id
+        )
+        if not available_interfaces:
+            log.error(
+                f'No network interfaces available from pool "{self.pool_name}" in subnet "{instance.subnet_id}" to attach to "{instance.instance_id}"'
+            )
+            return
+
+        instance_id = instance.instance_id
+        interface_id = available_interfaces[0].interface_id
+        device_index = len(instance.get("NetworkInterfaces", []))
+        try:
+            log.info(
+                f'attach network interface from pool "{self.pool_name}" to "{instance_id}" as device {device_index}'
+            )
+            ec2.attach_network_interface(
+                InstanceId=instance_id,
+                NetworkInterfaceId=interface_id,
+                DeviceIndex=device_index,
+            )
+            self.wait_for_interface_status(available_interfaces[0], "in-use")
+        except ClientError as e:
+            log.error(
+                f'failed to attach interface "{interface_id}" from "{self.pool_name}" to instance "{instance_id}", {e}'
+            )
+
     def attach_interfaces(self):
         """
         ensure a network interface is associated with all running instances in the pool
         """
         self.refresh()
         instances = list(self.unattached_instances)
+
         if not instances:
             log.debug(
                 f'All {len(self.instances)} instances in the pool "{self.pool_name}" are associated with a network interface'
@@ -74,32 +103,7 @@ class Manager(object):
             return
 
         for instance in instances:
-            available_interfaces = get_pool_interfaces_in_subnet(
-                self.pool_name, instance.subnet_id
-            )
-            if not available_interfaces:
-                log.error(
-                    f'No network interfaces available from pool "{self.pool_name}" in subnet "{instance.subnet_id}" to attach to "{instance.instance_id}"'
-                )
-                continue
-
-            instance_id = instance.instance_id
-            interface_id = available_interfaces[0].interface_id
-            device_index = len(instance.get("NetworkInterfaces", []))
-            try:
-                log.info(
-                    f'attach network interface from pool "{self.pool_name}" to "{instance.instance_id}" as device {device_index}'
-                )
-                ec2.attach_network_interface(
-                    InstanceId=instance_id,
-                    NetworkInterfaceId=interface_id,
-                    DeviceIndex=device_index,
-                )
-                self.wait_for_interface_status(available_interfaces[0], "in-use")
-            except ClientError as e:
-                log.error(
-                    f'failed to attach interface "{interface_id}" from "{self.pool_name}" to instance "{instance_id}", {e}'
-                )
+            self.attach_interface(instance)
 
     def wait_for_interface_status(self, interface: NetworkInterface, status: str):
         while interface.status != status:
@@ -196,7 +200,9 @@ def handler(event: dict, context: dict):
         manager = Manager(instance.pool_name)
         if is_address_removed_event(event):
             manager.detach_interfaces(instance.instance_id)
-        manager.attach_interfaces()
+            manager.attach_interfaces()
+        else:
+            manager.attach_interface(instance)
 
     elif is_timer(event):
         for pool_name in get_all_pool_names():
