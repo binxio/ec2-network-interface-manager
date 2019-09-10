@@ -59,6 +59,7 @@ Resources:
       Handler: network_interface_manager.handler
       Role: !GetAtt LambdaRole.Arn
       Runtime: python3.7
+      Timeout: 900
 
 
   Permission:

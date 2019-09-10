@@ -13,7 +13,11 @@ import boto3
 import logging
 from time import sleep
 from typing import List, Set, Optional
-from .network_interface import NetworkInterface, get_pool_interfaces, get_pool_interfaces_in_subnet
+from .network_interface import (
+    NetworkInterface,
+    get_pool_interfaces,
+    get_pool_interfaces_in_subnet,
+)
 from .ec2_instance import EC2Instance, get_pool_instances, describe_pool_instance
 
 
@@ -42,7 +46,10 @@ class Manager(object):
         result = set()
         for instance in self.instances:
             if list(
-                filter(lambda a: a.instance_id == instance.instance_id, self.network_interfaces)
+                filter(
+                    lambda a: a.instance_id == instance.instance_id,
+                    self.network_interfaces,
+                )
             ):
                 result.add(instance)
         return result
@@ -61,59 +68,76 @@ class Manager(object):
         self.refresh()
         instances = list(self.unattached_instances)
         if not instances:
-            log.info(
-                f'All instances in the pool "{self.pool_name}" are associated with a network interface'
+            log.debug(
+                f'All {len(self.instances)} instances in the pool "{self.pool_name}" are associated with a network interface'
             )
             return
 
         for instance in instances:
-            available_interfaces = get_pool_interfaces_in_subnet(self.pool_name, instance.subnet_id)
+            available_interfaces = get_pool_interfaces_in_subnet(
+                self.pool_name, instance.subnet_id
+            )
             if not available_interfaces:
-                log.error(f'No more network interfaces available in pool {self.pool_name} to attach to {instance.instance_id}')
+                log.error(
+                    f'No network interfaces available from pool "{self.pool_name}" in subnet "{instance.subnet_id}" to attach to "{instance.instance_id}"'
+                )
                 continue
 
             instance_id = instance.instance_id
             interface_id = available_interfaces[0].interface_id
             device_index = len(instance.get("NetworkInterfaces", []))
             try:
-                ec2.attach_network_interface( InstanceId=instance_id, NetworkInterfaceId=interface_id, DeviceIndex=device_index )
+                log.info(
+                    f'attach network interface from pool "{self.pool_name}" to "{instance.instance_id}" as device {device_index}'
+                )
+                ec2.attach_network_interface(
+                    InstanceId=instance_id,
+                    NetworkInterfaceId=interface_id,
+                    DeviceIndex=device_index,
+                )
                 self.wait_for_interface_status(available_interfaces[0], "in-use")
             except ClientError as e:
                 log.error(
                     f'failed to attach interface "{interface_id}" from "{self.pool_name}" to instance "{instance_id}", {e}'
                 )
 
-    def wait_for_interface_status(self, interface: NetworkInterface, status:str):
-                while interface.status != status:
-                    log.info(f"waiting 5s for interface to become {status}")
-                    sleep(5)
-                    response = ec2.describe_network_interfaces(NetworkInterfaceIds=[interface.interface_id])
-                    if response["NetworkInterfaces"]:
-                        interface = NetworkInterface(response["NetworkInterfaces"][0])
-                    else:
-                        log.error(f"has network interface {interface.interface_id} been deleted?")
-                        return
+    def wait_for_interface_status(self, interface: NetworkInterface, status: str):
+        while interface.status != status:
+            log.info(
+                f"waiting 1s for interface {interface.interface_id} to become {status}"
+            )
+            sleep(1)
+            response = ec2.describe_network_interfaces(
+                NetworkInterfaceIds=[interface.interface_id]
+            )
+            if response["NetworkInterfaces"]:
+                interface = NetworkInterface(response["NetworkInterfaces"][0])
+            else:
+                log.error(
+                    f"interface {interface.interface_id} could not be described. Has it been deleted?"
+                )
 
     def detach_interfaces(self, instance_id: str):
         """
         detach all the interfaces of the pool from the instance `self.instance_id`
         """
         self.refresh()
-        attached_interfaces = list(filter(lambda i: i.instance_id == instance_id, self.network_interfaces))
+        attached_interfaces = list(
+            filter(lambda i: i.instance_id == instance_id, self.network_interfaces)
+        )
         if not attached_interfaces:
-            log.info(
-                f'No Network interface from the pool {self.pool_name} attached to instance "{instance_id}"'
+            log.debug(
+                f'No network interfaces from pool {self.pool_name} to detach from instance "{instance_id}"'
             )
             return
 
         for interface in attached_interfaces:
             try:
                 log.info(
-                    f'detach interface "{interface.interface_id}" from instance "{instance_id}" of pool "{self.pool_name}"'
+                    f'detaching interface "{interface.interface_id}" of pool "{self.pool_name} from "{instance_id}"'
                 )
                 ec2.detach_network_interface(AttachmentId=interface.attachment_id)
                 self.wait_for_interface_status(interface, "available")
-
 
             except ClientError as e:
                 log.error(

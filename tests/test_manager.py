@@ -1,12 +1,13 @@
 import copy
 import boto3
 from typing import List
-from network_interface_manager import (
-    handler,
-    Manager,
-    NetworkInterface
+from network_interface_manager import handler, Manager, NetworkInterface
+from network_interface_manager.manager import (
+    get_pool_instances,
+    get_pool_interfaces,
+    get_pool_interfaces_in_subnet,
+    get_all_pool_names,
 )
-from network_interface_manager.manager import get_pool_instances, get_pool_interfaces, get_pool_interfaces_in_subnet, get_all_pool_names
 
 event = {
     "id": "7bf73129-1428-4cd3-a780-95db273d1602",
@@ -22,24 +23,28 @@ event = {
 
 ec2 = boto3.client("ec2")
 
-def get_interfaces() -> (List[NetworkInterface], List[NetworkInterface], List[NetworkInterface]):
+
+def get_interfaces() -> (
+    List[NetworkInterface],
+    List[NetworkInterface],
+    List[NetworkInterface],
+):
     response = ec2.describe_network_interfaces(
-        Filters=[
-            {"Name": "tag:network-interface-manager-pool", "Values": ["bastion"]},
-        ]
+        Filters=[{"Name": "tag:network-interface-manager-pool", "Values": ["bastion"]}]
     )
     interfaces = [NetworkInterface(a) for a in response["NetworkInterfaces"]]
     assert len(interfaces) == 3
     return (
         interfaces,
-        list(filter(lambda i : i.is_available, interfaces)),
-        list(filter(lambda i : not i.is_available, interfaces)),
+        list(filter(lambda i: i.is_available, interfaces)),
+        list(filter(lambda i: not i.is_available, interfaces)),
     )
 
 
 def test_get_all_pool_names():
     pool_names = get_all_pool_names()
     assert pool_names == ["bastion"]
+
 
 def test_get_interfaces():
     interfaces, _, _ = get_interfaces()
