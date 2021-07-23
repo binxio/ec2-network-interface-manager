@@ -4,8 +4,10 @@ NAME=network-interface-manager
 AWS_REGION=eu-central-1
 S3_BUCKET_PREFIX=binxio-public
 S3_BUCKET=$(S3_BUCKET_PREFIX)-$(AWS_REGION)
-
-ALL_REGIONS=$(shell printf "import boto3\nprint('\\\n'.join(map(lambda r: r['RegionName'], boto3.client('ec2').describe_regions()['Regions'])))\n" | python | grep -v '^$(AWS_REGION)$$')
+ALL_REGIONS=$(shell aws --region $(AWS_REGION) \
+		ec2 describe-regions 		\
+		--query 'join(`\n`, Regions[?RegionName != `$(AWS_REGION)`].RegionName)' \
+		--output text)
 
 help:
 	@echo 'make                 - builds a zip file to target/.'
@@ -119,4 +121,16 @@ demo:
 delete-demo:
 	aws cloudformation delete-stack --stack-name $(NAME)-demo
 	aws cloudformation wait stack-delete-complete  --stack-name $(NAME)-demo
+
+deploy-pipeline: 
+	aws cloudformation deploy \
+                --capabilities CAPABILITY_IAM \
+                --stack-name $(NAME)-pipeline \
+                --template-file ./cloudformation/cicd-pipeline.yaml \
+                --parameter-overrides \
+                        S3BucketPrefix=$(S3_BUCKET_PREFIX)
+
+delete-pipeline: 
+	aws cloudformation delete-stack --stack-name $(NAME)-pipeline
+	aws cloudformation wait stack-delete-complete  --stack-name $(NAME)-pipeline
 
