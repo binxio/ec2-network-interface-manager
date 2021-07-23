@@ -7,7 +7,7 @@ Parameters:
     Default: ''
   CFNCustomProviderZipFileName:
     Type: String
-    Default: lambdas/network-interface-manager-0.1.4.zip
+    Default: lambdas/network-interface-manager-0.1.5.zip
 
 Conditions:
   UsePublicBucket: !Equals
