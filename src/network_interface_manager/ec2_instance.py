@@ -13,6 +13,7 @@ ec2 = boto3.client("ec2")
 
 class EC2Instance(dict):
     def __init__(self, instance: dict):
+        super().__init__()
         self.update(instance)
 
     @property

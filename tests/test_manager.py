@@ -5,7 +5,6 @@ from network_interface_manager import handler, Manager, NetworkInterface
 from network_interface_manager.manager import (
     get_pool_instances,
     get_pool_interfaces,
-    get_pool_interfaces_in_subnet,
     get_all_pool_names,
 )
 

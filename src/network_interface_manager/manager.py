@@ -12,11 +12,11 @@ import os
 import boto3
 import logging
 from time import sleep
-from typing import List, Set, Optional
+from typing import List, Set
 from .network_interface import (
     NetworkInterface,
     get_pool_interfaces,
-    get_pool_interfaces_in_subnet,
+    get_available_pool_interfaces_in_subnet,
 )
 from .ec2_instance import EC2Instance, get_pool_instances, describe_pool_instance
 
@@ -55,16 +55,14 @@ class Manager(object):
         return result
 
     @property
-    def unattached_instances(self) -> Set[str]:
+    def unattached_instances(self) -> Set[EC2Instance]:
         """
         all instances in the  self.instances which do not have an interface assigned from `self.network_interfaces`
         """
         return set(self.instances) - self.attached_instances
 
-    def attach_interface(self, instance: NetworkInterface):
-        available_interfaces = get_pool_interfaces_in_subnet(
-            self.pool_name, instance.subnet_id
-        )
+    def attach_interface(self, instance: EC2Instance):
+        available_interfaces = get_available_pool_interfaces_in_subnet(self.pool_name, instance.subnet_id)
         if not available_interfaces:
             log.error(
                 f'No network interfaces available from pool "{self.pool_name}" in subnet "{instance.subnet_id}" to attach to "{instance.instance_id}"'

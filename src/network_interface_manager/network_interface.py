@@ -11,6 +11,7 @@ ec2 = boto3.client("ec2")
 
 class NetworkInterface(dict):
     def __init__(self, instance: dict):
+        super().__init__()
         self.update(instance)
 
     @property
@@ -19,11 +20,11 @@ class NetworkInterface(dict):
 
     @property
     def attachment_id(self) -> str:
-        return self.get("Attachment",{}).get("AttachmentId")
+        return self.get("Attachment", {}).get("AttachmentId")
 
     @property
     def attachment_status(self) -> str:
-        return self.get("Attachment",{}).get("Status")
+        return self.get("Attachment", {}).get("Status")
 
     @property
     def status(self) -> str:
@@ -70,11 +71,15 @@ def get_pool_interfaces(pool_name: str) -> List[NetworkInterface]:
     )
     return [NetworkInterface(n) for n in response["NetworkInterfaces"]]
 
-def get_pool_interfaces_in_subnet(pool_name: str, subnet_id: str) -> List[NetworkInterface]:
+
+def get_available_pool_interfaces_in_subnet(
+    pool_name: str, subnet_id: str
+) -> List[NetworkInterface]:
     response = ec2.describe_network_interfaces(
         Filters=[
             {"Name": "tag:network-interface-manager-pool", "Values": [pool_name]},
             {"Name": "subnet-id", "Values": [subnet_id]},
+            {"Name": "status", "Values": ["available"]},
         ]
     )
     return [NetworkInterface(n) for n in response["NetworkInterfaces"]]
