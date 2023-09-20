@@ -1,4 +1,4 @@
-FROM python:3.7
+FROM public.aws.ecr/docker/library/python:3.9
 RUN apt-get update && apt-get install -y zip
 WORKDIR /lambda
 
